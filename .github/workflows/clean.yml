@@ -1,41 +1,36 @@
-name: Clean dead IPTV streams
+name: Fast dead-link cleaner
 
 on:
-  schedule:                # run every 2 hours
-    - cron: "0 */2 * * *"
-  workflow_dispatch:       # manual button on GitHub
+  schedule:
+    - cron: "0 */2 * * *"   # every 2 h
+  workflow_dispatch:
 
 jobs:
   clean:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Install tools
-        run: sudo apt-get update && sudo apt-get install -y curl jq ffmpeg
-
-      - name: Download source playlist
+      - name: Download playlist
         run: curl -L https://iptv-org.github.io/iptv/index.m3u -o playlist.m3u
 
-      - name: Test each URL
+      - name: Light probe
         run: |
-          rm -f clean.m3u
           echo "#EXTM3U" > clean.m3u
           while IFS= read -r line; do
             if [[ "$line" == http* ]]; then
               url="${line//$'\r'/}"
-              if ffmpeg -v error -i "$url" -f null - 2>/dev/null; then
+              if curl -s -m 3 -I "$url" | grep -q "200\|302"; then
                 echo "#EXTINF:-1," >> clean.m3u
                 echo "$url" >> clean.m3u
               fi
             fi
           done < playlist.m3u
 
-      - name: Commit cleaned playlist
+      - name: Commit results
         run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
+          git config user.name "bot"
+          git config user.email "bot@example.com"
           git add clean.m3u
-          git diff --cached --quiet || git commit -m "Auto-clean dead links"
+          git diff --cached --quiet || git commit -m "Auto-clean"
           git push
