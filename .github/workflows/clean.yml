@@ -1,0 +1,41 @@
+name: Clean dead IPTV streams
+
+on:
+  schedule:                # run every 2 hours
+    - cron: "0 */2 * * *"
+  workflow_dispatch:       # manual button on GitHub
+
+jobs:
+  clean:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Install tools
+        run: sudo apt-get update && sudo apt-get install -y curl jq ffmpeg
+
+      - name: Download source playlist
+        run: curl -L https://iptv-org.github.io/iptv/index.m3u -o playlist.m3u
+
+      - name: Test each URL
+        run: |
+          rm -f clean.m3u
+          echo "#EXTM3U" > clean.m3u
+          while IFS= read -r line; do
+            if [[ "$line" == http* ]]; then
+              url="${line//$'\r'/}"
+              if ffmpeg -v error -i "$url" -f null - 2>/dev/null; then
+                echo "#EXTINF:-1," >> clean.m3u
+                echo "$url" >> clean.m3u
+              fi
+            fi
+          done < playlist.m3u
+
+      - name: Commit cleaned playlist
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add clean.m3u
+          git diff --cached --quiet || git commit -m "Auto-clean dead links"
+          git push
